@@ -1,13 +1,40 @@
-import { ref, get, update, onValue, runTransaction } from 'firebase/database';
+import { ref, get, update, remove, onValue, runTransaction } from 'firebase/database';
 import { db } from '#lib/firebase.js';
 
 export const MAX_PLAYERS = 8;
 
-export type Member = { name: string; joinedAt: number };
+export type Member = {
+	name: string;
+	joinedAt: number;
+	color?: string;
+	investigator?: string;
+};
+
+/** Player colors; the first is the title green. MAX_PLAYERS swatches, so each player can get a unique one. */
+export const PLAYER_COLORS = [
+	'#34d399',
+	'#f87171',
+	'#60a5fa',
+	'#fbbf24',
+	'#c084fc',
+	'#fb923c',
+	'#22d3ee',
+	'#f472b6'
+];
+
+export const DEFAULT_COLOR = PLAYER_COLORS[0];
+
+/** Random swatch not already used by another member (any swatch if all are taken). */
+function pickColor(members: Record<string, Member>): string {
+	const used = new Set(Object.values(members).map((m) => m.color));
+	const free = PLAYER_COLORS.filter((c) => !used.has(c));
+	const pool = free.length ? free : PLAYER_COLORS;
+	return pool[Math.floor(Math.random() * pool.length)];
+}
 
 export type Party = {
 	host: string;
-	status: 'lobby' | 'started';
+	status: 'lobby' | 'started' | 'playing';
 	createdAt: number;
 	members: Record<string, Member>;
 };
@@ -28,7 +55,9 @@ export async function createParty(userId: string, name: string): Promise<string>
 						host: userId,
 						status: 'lobby',
 						createdAt: now,
-						members: { [userId]: { name, joinedAt: now } }
+						members: {
+							[userId]: { name, joinedAt: now, color: pickColor({}) }
+						}
 					} satisfies Party)
 				: undefined
 		);
@@ -61,8 +90,92 @@ export async function joinParty(code: string, userId: string, name: string): Pro
 		}
 		return {
 			...party,
-			members: { ...members, [userId]: { name, joinedAt: existing?.joinedAt ?? Date.now() } }
+			members: {
+				...members,
+				[userId]: {
+					...existing,
+					name,
+					joinedAt: existing?.joinedAt ?? Date.now(),
+					color: existing?.color ?? pickColor(members)
+				}
+			}
 		};
+	});
+	if (failure) throw new Error(failure);
+}
+
+/** Deletes the party from Firebase, ending the campaign for everyone. */
+export async function endCampaign(code: string): Promise<void> {
+	await remove(partyRef(code));
+}
+
+/** Locks in the investigators and begins the campaign. Called by the host once everyone has chosen. */
+export async function beginCampaign(code: string): Promise<void> {
+	await update(partyRef(code), { status: 'playing' });
+}
+
+/** True once every member has picked an investigator. */
+export const allSelected = (party: Party) =>
+	Object.values(party.members ?? {}).every((m) => m.investigator);
+
+/**
+ * Picks an investigator for the user. Investigators are unique per party, and picks are
+ * locked once every member has chosen.
+ */
+export async function selectInvestigator(
+	code: string,
+	userId: string,
+	investigatorId: string
+): Promise<void> {
+	let failure = null as string | null;
+	await runTransaction(partyRef(code), (party: Party | null) => {
+		if (party === null) return party;
+		failure = null;
+		const members = party.members ?? {};
+		const me = members[userId];
+		if (!me) {
+			failure = 'You are not in this party.';
+			return;
+		}
+		if (party.status === 'playing') {
+			failure = 'Investigators are locked in.';
+			return;
+		}
+		if (
+			Object.entries(members).some(([id, m]) => id !== userId && m.investigator === investigatorId)
+		) {
+			failure = 'That investigator was just taken.';
+			return;
+		}
+		return {
+			...party,
+			members: {
+				...members,
+				[userId]: { ...me, investigator: investigatorId }
+			}
+		};
+	});
+	if (failure) throw new Error(failure);
+}
+
+/** Clears the user's pick so they can choose again. Not possible once the campaign has begun. */
+export async function clearInvestigator(code: string, userId: string): Promise<void> {
+	let failure = null as string | null;
+	await runTransaction(partyRef(code), (party: Party | null) => {
+		if (party === null) return party;
+		failure = null;
+		const me = party.members?.[userId];
+		if (!me) {
+			failure = 'You are not in this party.';
+			return;
+		}
+		if (party.status === 'playing') {
+			failure = 'Investigators are locked in.';
+			return;
+		}
+		// Firebase rejects undefined values, so drop the field instead of setting it.
+		const { investigator: _, ...rest } = me;
+		return { ...party, members: { ...party.members, [userId]: rest } };
 	});
 	if (failure) throw new Error(failure);
 }
