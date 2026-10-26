@@ -35,5 +35,9 @@
 	"imports": {
 		"#lib": "./src/lib/index.js",
 		"#lib/*": "./src/lib/*"
+	},
+	"dependencies": {
+		"dotenv": "^18.0.9",
+		"firebase": "^13.1.0"
 	}
 }
