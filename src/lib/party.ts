@@ -32,11 +32,22 @@ function pickColor(members: Record<string, Member>): string {
 	return pool[Math.floor(Math.random() * pool.length)];
 }
 
+/** 'order': host arranges turn order; 'lead': host picks the Lead Investigator; 'action': Action Phase. */
+export type Game = {
+	step: 'order' | 'lead' | 'action';
+	/** Member ids in turn order */
+	order: string[];
+	lead?: string;
+	/** Index into `order` of the player whose turn it is */
+	turn: number;
+};
+
 export type Party = {
 	host: string;
 	status: 'lobby' | 'started' | 'playing';
 	createdAt: number;
 	members: Record<string, Member>;
+	game?: Game;
 };
 
 const partyRef = (code: string) => ref(db, `parties/${code}`);
@@ -112,6 +123,49 @@ export async function endCampaign(code: string): Promise<void> {
 /** Locks in the investigators and begins the campaign. Called by the host once everyone has chosen. */
 export async function beginCampaign(code: string): Promise<void> {
 	await update(partyRef(code), { status: 'playing' });
+}
+
+/** Saves the host's turn order and moves on to picking the Lead Investigator. */
+export async function confirmTurnOrder(code: string, order: string[]): Promise<void> {
+	await update(partyRef(code), { game: { step: 'lead', order, turn: 0 } });
+}
+
+/** Gives the Lead Investigator token to a member, rotates the turn order to start with them and begins the Action Phase. */
+export async function assignLead(code: string, leadId: string): Promise<void> {
+	let failure = null as string | null;
+	await runTransaction(partyRef(code), (party: Party | null) => {
+		if (party === null) return party;
+		failure = null;
+		const order = party.game?.order ?? [];
+		const start = order.indexOf(leadId);
+		if (start < 0) {
+			failure = 'That player is not in the turn order.';
+			return;
+		}
+		const rotated = [...order.slice(start), ...order.slice(0, start)];
+		return { ...party, game: { step: 'action', order: rotated, lead: leadId, turn: 0 } };
+	});
+	if (failure) throw new Error(failure);
+}
+
+/** Passes the turn to the next player. Only the active player may do this. */
+export async function endTurn(code: string, userId: string): Promise<void> {
+	let failure = null as string | null;
+	await runTransaction(partyRef(code), (party: Party | null) => {
+		if (party === null) return party;
+		failure = null;
+		const game = party.game;
+		if (!game || game.step !== 'action') {
+			failure = 'The Action Phase has not started.';
+			return;
+		}
+		if (userId !== game.order[game.turn]) {
+			failure = "It isn't your turn.";
+			return;
+		}
+		return { ...party, game: { ...game, turn: (game.turn + 1) % game.order.length } };
+	});
+	if (failure) throw new Error(failure);
 }
 
 /** True once every member has picked an investigator. */

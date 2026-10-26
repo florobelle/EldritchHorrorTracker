@@ -16,6 +16,7 @@
 		subscribeParty,
 		type Party
 	} from '#lib/party.js';
+	import Game from '#lib/components/game.svelte';
 	import stamp from '#lib/assets/certified-stamp.png';
 	import { INVESTIGATORS, STAT_LABELS, getInvestigator } from '#lib/investigators.js';
 
@@ -116,30 +117,9 @@
 	{#if !party}
 		<p class="text-muted-foreground">Loading…</p>
 	{:else if playing}
-		<Card.Root class="w-full max-w-md py-10 text-center">
-			<Card.Header>
-				<Card.Title class="text-2xl">Campaign started</Card.Title>
-				<Card.Description>Party {code}</Card.Description>
-			</Card.Header>
-			<Card.Content class="flex flex-col gap-2">
-				{#each members as [id, member] (id)}
-					{@const inv = getInvestigator(member.investigator)}
-					<div
-						class="bg-muted flex items-center gap-3 border-l-4 px-3 py-2 text-left"
-						style:border-color={member.color ?? DEFAULT_COLOR}
-					>
-						{#if inv}
-							<img src={inv.image} alt={inv.name} class="size-12 object-cover object-top" />
-						{/if}
-						<div class="flex-1">
-							<p>{member.name}{id === userId ? ' (you)' : ''}</p>
-							<p class="text-muted-foreground text-sm">{inv?.name}</p>
-						</div>
-						{#if id === party.host}
-							<Badge>Host</Badge>
-						{/if}
-					</div>
-				{/each}
+		<Card.Root class="w-full max-w-md py-8">
+			<Card.Content>
+				<Game {party} {code} {userId} />
 			</Card.Content>
 			{#if isHost}
 				<Card.Footer class="flex-col gap-2">
@@ -229,11 +209,6 @@
 								<p>{viewing.possessions.join(', ')}</p>
 							</div>
 						</div>
-						{#if viewingTaker && viewing.id !== myPick}
-							<p class="font-semibold" style:color={viewingTaker.color}>
-								Taken by {viewingTaker.name}
-							</p>
-						{/if}
 						{#if myPick}
 							<Button
 								size="lg"
