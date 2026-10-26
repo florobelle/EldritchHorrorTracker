@@ -38,8 +38,10 @@ export type Game = {
 	/** Member ids in turn order */
 	order: string[];
 	lead?: string;
+	/** When on, the token passes to the next player in turn order after each Mythos Phase */
+	autoPass?: boolean;
 	/** Phase being played once step is 'action'; defaults to the Action Phase */
-	phase?: 'action' | 'encounter' | 'mythos';
+	phase?: 'action' | 'encounter' | 'mythos' | 'handoff';
 	/** Mythos Phase progress: index of the effect shown to everyone; past the last effect means the event prompt */
 	mythosStep?: number;
 	/** Index into `order` of the player whose turn it is */
@@ -135,7 +137,11 @@ export async function confirmTurnOrder(code: string, order: string[]): Promise<v
 }
 
 /** Gives the Lead Investigator token to a member, rotates the turn order to start with them and begins the Action Phase. */
-export async function assignLead(code: string, leadId: string): Promise<void> {
+export async function assignLead(
+	code: string,
+	leadId: string,
+	autoPass: boolean
+): Promise<void> {
 	let failure = null as string | null;
 	await runTransaction(partyRef(code), (party: Party | null) => {
 		if (party === null) return party;
@@ -149,7 +155,7 @@ export async function assignLead(code: string, leadId: string): Promise<void> {
 		const rotated = [...order.slice(start), ...order.slice(0, start)];
 		return {
 			...party,
-			game: { step: 'action', phase: 'action', order: rotated, lead: leadId, turn: 0 }
+			game: { step: 'action', phase: 'action', order: rotated, lead: leadId, autoPass, turn: 0 }
 		};
 	});
 	if (failure) throw new Error(failure);
@@ -197,7 +203,7 @@ export async function nextMythosStep(code: string, userId: string): Promise<void
 	if (failure) throw new Error(failure);
 }
 
-/** Lead Investigator ends the Mythos Phase; play continues with the Action Phase starting from the lead. */
+/** Lead Investigator ends the Mythos Phase; the lead then chooses who holds the token next ('handoff'), unless auto pass hands it to the next player. */
 export async function finishMythos(code: string, userId: string): Promise<void> {
 	let failure = null as string | null;
 	await runTransaction(partyRef(code), (party: Party | null) => {
@@ -209,9 +215,45 @@ export async function finishMythos(code: string, userId: string): Promise<void> 
 			return;
 		}
 		const { mythosStep: _, ...rest } = game;
-		return { ...party, game: { ...rest, phase: 'action', turn: 0 } };
+		if (game.autoPass) {
+			// The order starts with the current lead, so rotating by one makes the next player lead
+			const order = [...game.order.slice(1), ...game.order.slice(0, 1)];
+			return { ...party, game: { ...rest, order, lead: order[0], phase: 'action', turn: 0 } };
+		}
+		return { ...party, game: { ...rest, phase: 'handoff', turn: 0 } };
 	});
 	if (failure) throw new Error(failure);
+}
+
+/** Lead Investigator passes the token on; the turn order is rotated so the new lead goes first in the Action Phase. */
+export async function assignNextLead(code: string, userId: string, leadId: string): Promise<void> {
+	let failure = null as string | null;
+	await runTransaction(partyRef(code), (party: Party | null) => {
+		if (party === null) return party;
+		failure = null;
+		const game = party.game;
+		if (game?.phase !== 'handoff' || userId !== game.lead) {
+			failure = 'Only the Lead Investigator can choose the next lead.';
+			return;
+		}
+		if (leadId === game.lead) {
+			failure = 'Choose a different player as the next Lead Investigator.';
+			return;
+		}
+		const start = game.order.indexOf(leadId);
+		if (start < 0) {
+			failure = 'That player is not in the turn order.';
+			return;
+		}
+		const order = [...game.order.slice(start), ...game.order.slice(0, start)];
+		return { ...party, game: { ...game, order, lead: leadId, phase: 'action', turn: 0 } };
+	});
+	if (failure) throw new Error(failure);
+}
+
+/** Host toggles whether the Lead Investigator token passes automatically after each Mythos Phase. */
+export async function setAutoPass(code: string, autoPass: boolean): Promise<void> {
+	await update(partyRef(code), { 'game/autoPass': autoPass });
 }
 
 /** True once every member has picked an investigator. */

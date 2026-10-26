@@ -2,11 +2,13 @@
 	import { Badge } from '#lib/components/ui/badge/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import leadToken from '#lib/assets/Lead_Investigator_token.webp';
+	import AutoPassSwitch from '#lib/components/auto-pass-switch.svelte';
 	import reckoningIcon from '#lib/assets/reckoning-icon.webp';
 	import { ACTIONS, ENCOUNTERS, MYTHOS_EFFECTS } from '#lib/actions.js';
 	import { getInvestigator } from '#lib/investigators.js';
 	import {
 		assignLead,
+		assignNextLead,
 		confirmTurnOrder,
 		endTurn,
 		finishMythos,
@@ -30,6 +32,7 @@
 
 	let draftOrder = $state<string[] | null>(null);
 	let pickedLead = $state<string | null>(null);
+	let autoPass = $state(false);
 	let openAction = $state<string | null>(null);
 	const phase = $derived(party.game?.phase ?? 'action');
 	const phaseInfo = $derived(
@@ -143,10 +146,63 @@
 			{/each}
 		</ul>
 		{#if isHost}
+			<AutoPassSwitch checked={autoPass} onchange={(value) => (autoPass = value)} />
+		{/if}
+		{#if isHost}
 			<Button
 				size="lg"
 				disabled={!pickedLead || busy}
-				onclick={() => pickedLead && run(() => assignLead(code, pickedLead!))}
+				onclick={() =>
+					pickedLead &&
+					run(async () => {
+						await assignLead(code, pickedLead!, autoPass);
+						pickedLead = null;
+					})}
+			>
+				Assign Lead Investigator
+			</Button>
+		{/if}
+	{:else if phase === 'handoff'}
+		<p class="text-lg font-semibold">
+			{isLead
+				? 'Please choose the next Lead Investigator.'
+				: 'Please wait for the Lead Investigator to choose the next lead.'}
+		</p>
+		<div>
+			<h2 class="text-xl font-bold">Lead Investigator</h2>
+			<p class="text-muted-foreground text-sm">
+				The new lead goes first in the Action Phase. The current lead cannot be chosen again.
+			</p>
+		</div>
+		<ul class="flex flex-col gap-2">
+			{#each party.game?.order ?? [] as id (id)}
+				<li class="flex">
+					{#if isLead && id !== party.game?.lead}
+						<button
+							type="button"
+							class="flex flex-1 border-2 {pickedLead === id
+								? 'border-foreground'
+								: 'border-transparent'}"
+							onclick={() => (pickedLead = id)}
+						>
+							{@render player(id)}
+						</button>
+					{:else}
+						{@render player(id)}
+					{/if}
+				</li>
+			{/each}
+		</ul>
+		{#if isLead}
+			<Button
+				size="lg"
+				disabled={!pickedLead || busy}
+				onclick={() =>
+					pickedLead &&
+					run(async () => {
+						await assignNextLead(code, userId, pickedLead!);
+						pickedLead = null;
+					})}
 			>
 				Assign Lead Investigator
 			</Button>

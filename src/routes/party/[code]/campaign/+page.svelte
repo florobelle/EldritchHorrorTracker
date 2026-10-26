@@ -12,10 +12,12 @@
 		beginCampaign,
 		clearInvestigator,
 		endCampaign,
+		setAutoPass,
 		selectInvestigator,
 		subscribeParty,
 		type Party
 	} from '#lib/party.js';
+	import AutoPassSwitch from '#lib/components/auto-pass-switch.svelte';
 	import Game from '#lib/components/game.svelte';
 	import stamp from '#lib/assets/certified-stamp.png';
 	import { INVESTIGATORS, STAT_LABELS, getInvestigator } from '#lib/investigators.js';
@@ -123,6 +125,12 @@
 			</Card.Content>
 			{#if isHost}
 				<Card.Footer class="flex-col gap-2">
+					{#if party.game?.step === 'action'}
+						<AutoPassSwitch
+							checked={party.game.autoPass ?? false}
+							onchange={(value) => setAutoPass(code, value)}
+						/>
+					{/if}
 					<Button variant="destructive" onclick={end} disabled={ending}>
 						{ending ? 'Ending…' : 'End Campaign'}
 					</Button>
