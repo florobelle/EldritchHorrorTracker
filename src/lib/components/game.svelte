@@ -2,9 +2,18 @@
 	import { Badge } from '#lib/components/ui/badge/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import leadToken from '#lib/assets/Lead_Investigator_token.webp';
-	import { ACTIONS, ENCOUNTERS } from '#lib/actions.js';
+	import reckoningIcon from '#lib/assets/reckoning-icon.webp';
+	import { ACTIONS, ENCOUNTERS, MYTHOS_EFFECTS } from '#lib/actions.js';
 	import { getInvestigator } from '#lib/investigators.js';
-	import { assignLead, confirmTurnOrder, endTurn, DEFAULT_COLOR, type Party } from '#lib/party.js';
+	import {
+		assignLead,
+		confirmTurnOrder,
+		endTurn,
+		finishMythos,
+		nextMythosStep,
+		DEFAULT_COLOR,
+		type Party
+	} from '#lib/party.js';
 
 	let { party, code, userId }: { party: Party; code: string; userId: string } = $props();
 
@@ -34,6 +43,9 @@
 	const order = $derived(draftOrder ?? savedOrder);
 	const activeId = $derived(party.game?.order[party.game.turn]);
 	const isActive = $derived(activeId === userId);
+	const isLead = $derived(party.game?.lead === userId);
+	const mythosStep = $derived(party.game?.mythosStep ?? 0);
+	const mythosEffect = $derived(MYTHOS_EFFECTS[mythosStep]);
 
 	function move(index: number, delta: number) {
 		const next = [...order];
@@ -138,6 +150,34 @@
 			>
 				Assign Lead Investigator
 			</Button>
+		{/if}
+	{:else if phase === 'mythos'}
+		<p class="text-lg font-semibold">
+			{isLead
+				? 'Please draw a Mythos card and resolve each effect and event.'
+				: 'Please wait for the Lead Investigator to resolve the Mythos Phase.'}
+		</p>
+		<h2 class="text-xl font-bold">Mythos Phase</h2>
+		{#if mythosEffect}
+			<div class="flex flex-col gap-2 border border-[#d8cba8] bg-[#f6efdc] p-4 text-[#3a3022]">
+				<p class="text-sm text-[#7a6a4f]">Effect {mythosStep + 1} of {MYTHOS_EFFECTS.length}</p>
+				<h3 class="text-lg font-bold">{mythosEffect.name}</h3>
+				<p class="whitespace-pre-line">{#each mythosEffect.description.split('{reckoning}') as part, i (i)}{#if i > 0}<img src={reckoningIcon} alt="Reckoning" class="inline-block h-5 align-text-bottom" />{/if}{part}{/each}</p>
+			</div>
+			{#if isLead}
+				<Button size="lg" disabled={busy} onclick={() => run(() => nextMythosStep(code, userId))}>
+					Next
+				</Button>
+			{/if}
+		{:else}
+			<div class="border border-[#d8cba8] bg-[#f6efdc] p-4 text-[#3a3022]">
+				<p class="text-lg font-semibold">Please resolve the event on the Mythos card if any.</p>
+			</div>
+			{#if isLead}
+				<Button size="lg" disabled={busy} onclick={() => run(() => finishMythos(code, userId))}>
+					Done
+				</Button>
+			{/if}
 		{/if}
 	{:else}
 		<p class="text-lg font-semibold">

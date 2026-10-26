@@ -84,3 +84,45 @@ export const ENCOUNTERS: GameAction[] = [
 			"Defeated Investigator tokens allow investigators to resolve the encounter listed on the back of the defeated investigator's sheet."
 	}
 ];
+
+/** `{reckoning}` in a description is rendered as the Reckoning icon. */
+export const MYTHOS_EFFECTS: GameAction[] = [
+	{
+		id: 'advance-omen',
+		name: 'Advance Omen',
+		description:
+			"Move the Omen token one space clockwise around the track. Then advance Doom by one for each Gate on the game board that matches the Omen token's current space."
+	},
+	{
+		id: 'resolve-reckoning',
+		name: 'Resolve Reckoning Effects',
+		description:
+			'Resolve all effects preceded by a {reckoning} icon on components in play.\nResolve these effects in the following order:\n1. Monsters\n2. Ancient One sheet\n3. Ongoing Mythos cards\n4. Investigator possessions and Conditions'
+	},
+	{
+		id: 'spawn-gates',
+		name: 'Spawn Gates',
+		description: 'Spawn a number of Gates as defined by the Reference card.'
+	},
+	{
+		id: 'monster-surge',
+		name: 'Monster Surge',
+		description:
+			"At each Gate that matches the Omen token's current space, spawn the number of Monsters listed on the Reference card."
+	},
+	{
+		id: 'spawn-clues',
+		name: 'Spawn Clues',
+		description: 'Spawn a number of Clues as defined by the Reference card.'
+	},
+	{
+		id: 'place-rumor',
+		name: 'Place Rumor Token',
+		description: 'Place a Rumor token on the space listed.'
+	},
+	{
+		id: 'place-eldritch',
+		name: 'Place Eldritch Tokens',
+		description: 'Place the listed number of Eldritch tokens on this Mythos card.'
+	}
+];

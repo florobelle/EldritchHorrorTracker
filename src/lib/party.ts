@@ -39,7 +39,9 @@ export type Game = {
 	order: string[];
 	lead?: string;
 	/** Phase being played once step is 'action'; defaults to the Action Phase */
-	phase?: 'action' | 'encounter';
+	phase?: 'action' | 'encounter' | 'mythos';
+	/** Mythos Phase progress: index of the effect shown to everyone; past the last effect means the event prompt */
+	mythosStep?: number;
 	/** Index into `order` of the player whose turn it is */
 	turn: number;
 };
@@ -170,9 +172,44 @@ export async function endTurn(code: string, userId: string): Promise<void> {
 		}
 		const next = game.turn + 1;
 		if (next < game.order.length) return { ...party, game: { ...game, turn: next } };
-		// Everyone has played this phase: Action -> Encounter, then back to Action until the Mythos Phase exists
-		const phase = game.phase === 'encounter' ? 'action' : 'encounter';
-		return { ...party, game: { ...game, phase, turn: 0 } };
+		// Everyone has played this phase: Action -> Encounter -> Mythos
+		if (game.phase === 'encounter') {
+			return { ...party, game: { ...game, phase: 'mythos', mythosStep: 0, turn: 0 } };
+		}
+		return { ...party, game: { ...game, phase: 'encounter', turn: 0 } };
+	});
+	if (failure) throw new Error(failure);
+}
+
+/** Lead Investigator moves to the next Mythos effect (or the event prompt after the last one). */
+export async function nextMythosStep(code: string, userId: string): Promise<void> {
+	let failure = null as string | null;
+	await runTransaction(partyRef(code), (party: Party | null) => {
+		if (party === null) return party;
+		failure = null;
+		const game = party.game;
+		if (game?.phase !== 'mythos' || userId !== game.lead) {
+			failure = 'Only the Lead Investigator can advance the Mythos Phase.';
+			return;
+		}
+		return { ...party, game: { ...game, mythosStep: (game.mythosStep ?? 0) + 1 } };
+	});
+	if (failure) throw new Error(failure);
+}
+
+/** Lead Investigator ends the Mythos Phase; play continues with the Action Phase starting from the lead. */
+export async function finishMythos(code: string, userId: string): Promise<void> {
+	let failure = null as string | null;
+	await runTransaction(partyRef(code), (party: Party | null) => {
+		if (party === null) return party;
+		failure = null;
+		const game = party.game;
+		if (game?.phase !== 'mythos' || userId !== game.lead) {
+			failure = 'Only the Lead Investigator can end the Mythos Phase.';
+			return;
+		}
+		const { mythosStep: _, ...rest } = game;
+		return { ...party, game: { ...rest, phase: 'action', turn: 0 } };
 	});
 	if (failure) throw new Error(failure);
 }
