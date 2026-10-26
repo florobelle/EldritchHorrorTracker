@@ -11,7 +11,7 @@
 				<span
 					class="text-5xl font-extrabold tracking-wide text-emerald-400 sm:text-7xl"
 				>
-					Eldritch Horror
+					ELDRITCH HORROR
 				</span>
 				<span class="text-muted-foreground text-xl sm:text-2xl">Tracker</span>
 			</h1>
