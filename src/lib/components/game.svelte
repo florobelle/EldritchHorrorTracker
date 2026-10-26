@@ -2,7 +2,7 @@
 	import { Badge } from '#lib/components/ui/badge/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import leadToken from '#lib/assets/Lead_Investigator_token.webp';
-	import { ACTIONS } from '#lib/actions.js';
+	import { ACTIONS, ENCOUNTERS } from '#lib/actions.js';
 	import { getInvestigator } from '#lib/investigators.js';
 	import { assignLead, confirmTurnOrder, endTurn, DEFAULT_COLOR, type Party } from '#lib/party.js';
 
@@ -22,6 +22,12 @@
 	let draftOrder = $state<string[] | null>(null);
 	let pickedLead = $state<string | null>(null);
 	let openAction = $state<string | null>(null);
+	const phase = $derived(party.game?.phase ?? 'action');
+	const phaseInfo = $derived(
+		phase === 'encounter'
+			? { title: 'Encounter Phase', note: 'Choose 1 encounter on your turn.', items: ENCOUNTERS }
+			: { title: 'Action Phase', note: 'Perform 2 different actions on your turn.', items: ACTIONS }
+	);
 	let busy = $state(false);
 	let error = $state<string | null>(null);
 
@@ -138,18 +144,19 @@
 			{isActive ? 'It is your turn.' : 'Please wait for your turn.'}
 		</p>
 		<div>
-			<h2 class="text-xl font-bold">Action Phase</h2>
-			<p class="text-muted-foreground text-sm">Perform 2 different actions on your turn.</p>
+			<h2 class="text-xl font-bold">{phaseInfo.title}</h2>
+			<p class="text-muted-foreground text-sm">{phaseInfo.note}</p>
 		</div>
 		<ul class="flex flex-col gap-1">
-			{#each ACTIONS as action (action.id)}
-				{@const open = openAction === action.id}
+			{#each phaseInfo.items as action (phase + action.id)}
+				{@const key = `${phase}:${action.id}`}
+				{@const open = openAction === key}
 				<li class="bg-muted">
 					<button
 						type="button"
 						class="flex w-full items-center justify-between px-3 py-3 text-left font-semibold"
 						aria-expanded={open}
-						onclick={() => (openAction = open ? null : action.id)}
+						onclick={() => (openAction = open ? null : key)}
 					>
 						{action.name}
 						<span class="text-muted-foreground">{open ? '−' : '+'}</span>

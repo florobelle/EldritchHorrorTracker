@@ -38,6 +38,8 @@ export type Game = {
 	/** Member ids in turn order */
 	order: string[];
 	lead?: string;
+	/** Phase being played once step is 'action'; defaults to the Action Phase */
+	phase?: 'action' | 'encounter';
 	/** Index into `order` of the player whose turn it is */
 	turn: number;
 };
@@ -143,7 +145,10 @@ export async function assignLead(code: string, leadId: string): Promise<void> {
 			return;
 		}
 		const rotated = [...order.slice(start), ...order.slice(0, start)];
-		return { ...party, game: { step: 'action', order: rotated, lead: leadId, turn: 0 } };
+		return {
+			...party,
+			game: { step: 'action', phase: 'action', order: rotated, lead: leadId, turn: 0 }
+		};
 	});
 	if (failure) throw new Error(failure);
 }
@@ -163,7 +168,11 @@ export async function endTurn(code: string, userId: string): Promise<void> {
 			failure = "It isn't your turn.";
 			return;
 		}
-		return { ...party, game: { ...game, turn: (game.turn + 1) % game.order.length } };
+		const next = game.turn + 1;
+		if (next < game.order.length) return { ...party, game: { ...game, turn: next } };
+		// Everyone has played this phase: Action -> Encounter, then back to Action until the Mythos Phase exists
+		const phase = game.phase === 'encounter' ? 'action' : 'encounter';
+		return { ...party, game: { ...game, phase, turn: 0 } };
 	});
 	if (failure) throw new Error(failure);
 }
