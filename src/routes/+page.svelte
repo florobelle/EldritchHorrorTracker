@@ -15,7 +15,7 @@
 				</span>
 				<span class="text-muted-foreground text-xl sm:text-2xl">Tracker</span>
 			</h1>
-			<Button size="lg">Begin</Button>
+			<Button size="lg" href="/party">Begin</Button>
 		</Card.Content>
 	</Card.Root>
 </main>
