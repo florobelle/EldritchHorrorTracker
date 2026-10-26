@@ -8,6 +8,8 @@ export type Member = {
 	joinedAt: number;
 	color?: string;
 	investigator?: string;
+	/** Ids from conditions.ts */
+	conditions?: string[];
 };
 
 /** Player colors; the first is the title green. MAX_PLAYERS swatches, so each player can get a unique one. */
@@ -137,11 +139,7 @@ export async function confirmTurnOrder(code: string, order: string[]): Promise<v
 }
 
 /** Gives the Lead Investigator token to a member, rotates the turn order to start with them and begins the Action Phase. */
-export async function assignLead(
-	code: string,
-	leadId: string,
-	autoPass: boolean
-): Promise<void> {
+export async function assignLead(code: string, leadId: string, autoPass: boolean): Promise<void> {
 	let failure = null as string | null;
 	await runTransaction(partyRef(code), (party: Party | null) => {
 		if (party === null) return party;
@@ -203,6 +201,22 @@ export async function nextMythosStep(code: string, userId: string): Promise<void
 	if (failure) throw new Error(failure);
 }
 
+/** Lead Investigator returns to the previous Mythos effect. */
+export async function previousMythosStep(code: string, userId: string): Promise<void> {
+	let failure = null as string | null;
+	await runTransaction(partyRef(code), (party: Party | null) => {
+		if (party === null) return party;
+		failure = null;
+		const game = party.game;
+		if (game?.phase !== 'mythos' || userId !== game.lead) {
+			failure = 'Only the Lead Investigator can go back in the Mythos Phase.';
+			return;
+		}
+		return { ...party, game: { ...game, mythosStep: Math.max(0, (game.mythosStep ?? 0) - 1) } };
+	});
+	if (failure) throw new Error(failure);
+}
+
 /** Lead Investigator ends the Mythos Phase; the lead then chooses who holds the token next ('handoff'), unless auto pass hands it to the next player. */
 export async function finishMythos(code: string, userId: string): Promise<void> {
 	let failure = null as string | null;
@@ -254,6 +268,22 @@ export async function assignNextLead(code: string, userId: string, leadId: strin
 /** Host toggles whether the Lead Investigator token passes automatically after each Mythos Phase. */
 export async function setAutoPass(code: string, autoPass: boolean): Promise<void> {
 	await update(partyRef(code), { 'game/autoPass': autoPass });
+}
+
+/** Adds a condition to the member's list (no duplicates). */
+export async function addCondition(code: string, userId: string, id: string): Promise<void> {
+	await runTransaction(ref(db, `parties/${code}/members/${userId}/conditions`), (current) => {
+		const list: string[] = current ?? [];
+		return list.includes(id) ? list : [...list, id];
+	});
+}
+
+/** Removes a condition from the member's list. */
+export async function removeCondition(code: string, userId: string, id: string): Promise<void> {
+	await runTransaction(ref(db, `parties/${code}/members/${userId}/conditions`), (current) => {
+		const list: string[] = current ?? [];
+		return list.includes(id) ? list.filter((c) => c !== id) : list;
+	});
 }
 
 /** True once every member has picked an investigator. */

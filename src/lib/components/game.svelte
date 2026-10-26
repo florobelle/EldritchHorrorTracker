@@ -5,14 +5,18 @@
 	import AutoPassSwitch from '#lib/components/auto-pass-switch.svelte';
 	import reckoningIcon from '#lib/assets/reckoning-icon.webp';
 	import { ACTIONS, ENCOUNTERS, MYTHOS_EFFECTS } from '#lib/actions.js';
+	import { CONDITIONS, getCondition } from '#lib/conditions.js';
 	import { getInvestigator } from '#lib/investigators.js';
 	import {
+		addCondition,
 		assignLead,
 		assignNextLead,
 		confirmTurnOrder,
 		endTurn,
 		finishMythos,
 		nextMythosStep,
+		previousMythosStep,
+		removeCondition,
 		DEFAULT_COLOR,
 		type Party
 	} from '#lib/party.js';
@@ -40,12 +44,17 @@
 			? { title: 'Encounter Phase', note: 'Choose 1 encounter on your turn.', items: ENCOUNTERS }
 			: { title: 'Action Phase', note: 'Perform 2 different actions on your turn.', items: ACTIONS }
 	);
+	let conditionPanel = $state<'gain' | 'remove' | null>(null);
 	let busy = $state(false);
 	let error = $state<string | null>(null);
 
 	const order = $derived(draftOrder ?? savedOrder);
 	const activeId = $derived(party.game?.order[party.game.turn]);
 	const isActive = $derived(activeId === userId);
+	const myConditions = $derived(
+		(party.members?.[userId]?.conditions ?? []).flatMap((id) => getCondition(id) ?? [])
+	);
+	const isDetained = $derived(myConditions.some((c) => c.id === 'detained'));
 	const isLead = $derived(party.game?.lead === userId);
 	const mythosStep = $derived(party.game?.mythosStep ?? 0);
 	const mythosEffect = $derived(MYTHOS_EFFECTS[mythosStep]);
@@ -70,6 +79,13 @@
 		}
 	}
 </script>
+
+{#snippet reminder(title: string, text: string)}
+	<div class="border border-[#d8cba8] bg-[#f6efdc] p-3 text-left text-[#3a3022]">
+		<p class="font-bold">{title}</p>
+		<p class="text-sm">{text}</p>
+	</div>
+{/snippet}
 
 {#snippet player(id: string)}
 	{@const member = party.members[id]}
@@ -220,19 +236,58 @@
 				<h3 class="text-lg font-bold">{mythosEffect.name}</h3>
 				<p class="whitespace-pre-line">{#each mythosEffect.description.split('{reckoning}') as part, i (i)}{#if i > 0}<img src={reckoningIcon} alt="Reckoning" class="inline-block h-5 align-text-bottom" />{/if}{part}{/each}</p>
 			</div>
+			{#if mythosEffect.id === 'resolve-reckoning'}
+				{#each myConditions.filter((c) => c.reckoning) as condition (condition.id)}
+					{@render reminder(`Reckoning: ${condition.name}`, condition.reckoning!)}
+				{/each}
+			{/if}
 			{#if isLead}
-				<Button size="lg" disabled={busy} onclick={() => run(() => nextMythosStep(code, userId))}>
-					Next
-				</Button>
+				<div class="flex gap-2">
+					{#if mythosStep > 0}
+						<Button
+							size="lg"
+							variant="outline"
+							class="flex-1"
+							disabled={busy}
+							onclick={() => run(() => previousMythosStep(code, userId))}
+						>
+							Back
+						</Button>
+					{/if}
+					<Button
+						size="lg"
+						class="flex-1"
+						disabled={busy}
+						onclick={() => run(() => nextMythosStep(code, userId))}
+					>
+						Next
+					</Button>
+				</div>
 			{/if}
 		{:else}
 			<div class="border border-[#d8cba8] bg-[#f6efdc] p-4 text-[#3a3022]">
 				<p class="text-lg font-semibold">Please resolve the event on the Mythos card if any.</p>
 			</div>
 			{#if isLead}
-				<Button size="lg" disabled={busy} onclick={() => run(() => finishMythos(code, userId))}>
-					Done
-				</Button>
+				<div class="flex gap-2">
+					<Button
+						size="lg"
+						variant="outline"
+						class="flex-1"
+						disabled={busy}
+						onclick={() => run(() => previousMythosStep(code, userId))}
+					>
+						Back
+					</Button>
+					<Button
+						size="lg"
+						class="flex-1"
+						disabled={busy}
+						onclick={() => run(() => finishMythos(code, userId))}
+					>
+						Done
+					</Button>
+				</div>
 			{/if}
 		{/if}
 	{:else}
@@ -243,7 +298,12 @@
 			<h2 class="text-xl font-bold">{phaseInfo.title}</h2>
 			<p class="text-muted-foreground text-sm">{phaseInfo.note}</p>
 		</div>
-		<ul class="flex flex-col gap-1">
+		{#if phase === 'action' && isActive}
+			{#each myConditions.filter((c) => c.action) as condition (condition.id)}
+				{@render reminder(condition.name, condition.action!)}
+			{/each}
+		{/if}
+		<ul class="flex flex-col gap-1 {phase === 'action' && isActive && isDetained ? 'hidden' : ''}">
 			{#each phaseInfo.items as action (phase + action.id)}
 				{@const key = `${phase}:${action.id}`}
 				{@const open = openAction === key}
@@ -263,6 +323,57 @@
 				</li>
 			{/each}
 		</ul>
+		{#if phase === 'encounter' || phase === 'action'}
+			<div class="flex flex-col gap-2">
+				<div class="grid gap-2 {phase === 'encounter' ? 'grid-cols-2' : ''}">
+					{#if phase === 'encounter'}
+						<Button
+							variant="outline"
+							onclick={() => (conditionPanel = conditionPanel === 'gain' ? null : 'gain')}
+						>
+							I gained a Condition
+						</Button>
+					{/if}
+					<Button
+						variant="outline"
+						disabled={myConditions.length === 0}
+						onclick={() => (conditionPanel = conditionPanel === 'remove' ? null : 'remove')}
+					>
+						Remove condition
+					</Button>
+				</div>
+				{#if myConditions.length}
+					<div class="flex flex-wrap gap-1">
+						{#each myConditions as condition (condition.id)}
+							<Badge variant="secondary">{condition.name}</Badge>
+						{/each}
+					</div>
+				{/if}
+				{#if conditionPanel === 'remove' || (conditionPanel === 'gain' && phase === 'encounter')}
+					<div class="bg-muted flex flex-col gap-1 p-2">
+						<p class="text-muted-foreground px-1 text-sm">
+							{conditionPanel === 'gain' ? 'Which Condition did you gain?' : 'Which Condition to remove?'}
+						</p>
+						{#each conditionPanel === 'gain' ? CONDITIONS : myConditions as condition (condition.id)}
+							<Button
+								variant="ghost"
+								class="justify-start"
+								disabled={busy ||
+									(conditionPanel === 'gain' && myConditions.some((c) => c.id === condition.id))}
+								onclick={() =>
+									run(async () => {
+										if (conditionPanel === 'gain') await addCondition(code, userId, condition.id);
+										else await removeCondition(code, userId, condition.id);
+										conditionPanel = null;
+									})}
+							>
+								{condition.name}
+							</Button>
+						{/each}
+					</div>
+				{/if}
+			</div>
+		{/if}
 		<div>
 			<p class="text-muted-foreground mb-2 text-sm">Turn order</p>
 			<ol class="flex flex-col gap-2">
