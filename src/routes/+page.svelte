@@ -1,6 +1,8 @@
 <script lang="ts">
 	import * as Card from '#lib/components/ui/card/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
+	import { goto } from '$app/navigation';
+	import { getUsername } from '#lib/user.js';
 </script>
 
 <main class="flex min-h-svh items-center justify-center p-4">
@@ -15,7 +17,9 @@
 				</span>
 				<span class="text-muted-foreground text-xl sm:text-2xl">Tracker</span>
 			</h1>
-			<Button size="lg" href="/party">Begin</Button>
+			<Button size="lg" onclick={() => goto(getUsername() ? '/party' : '/username')}>
+					Begin
+				</Button>
 		</Card.Content>
 	</Card.Root>
 </main>
