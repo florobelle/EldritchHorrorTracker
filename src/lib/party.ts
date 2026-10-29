@@ -133,8 +133,14 @@ export async function beginCampaign(code: string): Promise<void> {
 	await update(partyRef(code), { status: 'playing' });
 }
 
-/** Saves the host's turn order and moves on to picking the Lead Investigator. */
+/** Saves the host's turn order and moves on to picking the Lead Investigator (a lone player is made lead straight away). */
 export async function confirmTurnOrder(code: string, order: string[]): Promise<void> {
+	if (order.length === 1) {
+		await update(partyRef(code), {
+			game: { step: 'action', phase: 'action', order, lead: order[0], autoPass: false, turn: 0 }
+		});
+		return;
+	}
 	await update(partyRef(code), { game: { step: 'lead', order, turn: 0 } });
 }
 
@@ -217,7 +223,7 @@ export async function previousMythosStep(code: string, userId: string): Promise<
 	if (failure) throw new Error(failure);
 }
 
-/** Lead Investigator ends the Mythos Phase; the lead then chooses who holds the token next ('handoff'), unless auto pass hands it to the next player. */
+/** Lead Investigator ends the Mythos Phase; the lead then chooses who holds the token next ('handoff'), unless auto pass hands it to the next player (or the only player keeps it). */
 export async function finishMythos(code: string, userId: string): Promise<void> {
 	let failure = null as string | null;
 	await runTransaction(partyRef(code), (party: Party | null) => {
@@ -229,7 +235,7 @@ export async function finishMythos(code: string, userId: string): Promise<void> 
 			return;
 		}
 		const { mythosStep: _, ...rest } = game;
-		if (game.autoPass) {
+		if (game.autoPass || game.order.length === 1) {
 			// The order starts with the current lead, so rotating by one makes the next player lead
 			const order = [...game.order.slice(1), ...game.order.slice(0, 1)];
 			return { ...party, game: { ...rest, order, lead: order[0], phase: 'action', turn: 0 } };
