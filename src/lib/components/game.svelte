@@ -87,6 +87,56 @@
 	</div>
 {/snippet}
 
+{#snippet conditionControls()}
+	<div class="flex flex-col gap-2">
+		<div class="grid grid-cols-2 gap-2">
+			<Button
+				variant="outline"
+				onclick={() => (conditionPanel = conditionPanel === 'gain' ? null : 'gain')}
+			>
+				I gained a Condition
+			</Button>
+			<Button
+				variant="outline"
+				disabled={myConditions.length === 0}
+				onclick={() => (conditionPanel = conditionPanel === 'remove' ? null : 'remove')}
+			>
+				Remove condition
+			</Button>
+		</div>
+		{#if myConditions.length}
+			<div class="flex flex-wrap gap-1">
+				{#each myConditions as condition (condition.id)}
+					<Badge variant="secondary">{condition.name}</Badge>
+				{/each}
+			</div>
+		{/if}
+		{#if conditionPanel === 'remove' || conditionPanel === 'gain'}
+			<div class="bg-muted flex flex-col gap-1 p-2">
+				<p class="text-muted-foreground px-1 text-sm">
+					{conditionPanel === 'gain' ? 'Which Condition did you gain?' : 'Which Condition to remove?'}
+				</p>
+				{#each conditionPanel === 'gain' ? CONDITIONS : myConditions as condition (condition.id)}
+					<Button
+						variant="ghost"
+						class="justify-start"
+						disabled={busy ||
+							(conditionPanel === 'gain' && myConditions.some((c) => c.id === condition.id))}
+						onclick={() =>
+							run(async () => {
+								if (conditionPanel === 'gain') await addCondition(code, userId, condition.id);
+								else await removeCondition(code, userId, condition.id);
+								conditionPanel = null;
+							})}
+					>
+						{condition.name}
+					</Button>
+				{/each}
+			</div>
+		{/if}
+	</div>
+{/snippet}
+
 {#snippet player(id: string)}
 	{@const member = party.members[id]}
 	{@const inv = getInvestigator(member.investigator)}
@@ -240,6 +290,7 @@
 				{#each myConditions.filter((c) => c.reckoning) as condition (condition.id)}
 					{@render reminder(`Reckoning: ${condition.name}`, condition.reckoning!)}
 				{/each}
+				{@render conditionControls()}
 			{/if}
 			{#if isLead}
 				<div class="flex gap-2">
@@ -324,55 +375,7 @@
 			{/each}
 		</ul>
 		{#if phase === 'encounter' || phase === 'action'}
-			<div class="flex flex-col gap-2">
-				<div class="grid gap-2 {phase === 'encounter' ? 'grid-cols-2' : ''}">
-					{#if phase === 'encounter'}
-						<Button
-							variant="outline"
-							onclick={() => (conditionPanel = conditionPanel === 'gain' ? null : 'gain')}
-						>
-							I gained a Condition
-						</Button>
-					{/if}
-					<Button
-						variant="outline"
-						disabled={myConditions.length === 0}
-						onclick={() => (conditionPanel = conditionPanel === 'remove' ? null : 'remove')}
-					>
-						Remove condition
-					</Button>
-				</div>
-				{#if myConditions.length}
-					<div class="flex flex-wrap gap-1">
-						{#each myConditions as condition (condition.id)}
-							<Badge variant="secondary">{condition.name}</Badge>
-						{/each}
-					</div>
-				{/if}
-				{#if conditionPanel === 'remove' || (conditionPanel === 'gain' && phase === 'encounter')}
-					<div class="bg-muted flex flex-col gap-1 p-2">
-						<p class="text-muted-foreground px-1 text-sm">
-							{conditionPanel === 'gain' ? 'Which Condition did you gain?' : 'Which Condition to remove?'}
-						</p>
-						{#each conditionPanel === 'gain' ? CONDITIONS : myConditions as condition (condition.id)}
-							<Button
-								variant="ghost"
-								class="justify-start"
-								disabled={busy ||
-									(conditionPanel === 'gain' && myConditions.some((c) => c.id === condition.id))}
-								onclick={() =>
-									run(async () => {
-										if (conditionPanel === 'gain') await addCondition(code, userId, condition.id);
-										else await removeCondition(code, userId, condition.id);
-										conditionPanel = null;
-									})}
-							>
-								{condition.name}
-							</Button>
-						{/each}
-					</div>
-				{/if}
-			</div>
+			{@render conditionControls()}
 		{/if}
 		<div>
 			<p class="text-muted-foreground mb-2 text-sm">Turn order</p>
