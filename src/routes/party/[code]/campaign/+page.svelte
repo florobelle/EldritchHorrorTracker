@@ -17,6 +17,7 @@
 	} from '#lib/party.js';
 	import Game from '#lib/components/game.svelte';
 	import stamp from '#lib/assets/certified-stamp.png';
+	import DiceFive from 'phosphor-svelte/lib/DiceFive';
 	import GearSix from 'phosphor-svelte/lib/GearSix';
 	import { INVESTIGATORS, STAT_LABELS, getInvestigator } from '#lib/investigators.js';
 
@@ -121,13 +122,24 @@
 </script>
 
 <main class="flex min-h-svh items-center justify-center p-4">
-	<a
-		href="/party/{code}/settings"
-		aria-label="Settings"
-		class="bg-card text-muted-foreground hover:text-foreground fixed top-0 right-0 z-10 rounded-bl-xl border-b border-l p-3 transition-colors"
+	<nav
+		class="bg-card text-muted-foreground fixed top-0 right-0 z-10 flex rounded-bl-xl border-b border-l"
 	>
-		<GearSix class="size-7" />
-	</a>
+		<a
+			href="/party/{code}/dice"
+			aria-label="Roll dice"
+			class="hover:text-foreground p-3 transition-colors"
+		>
+			<DiceFive class="size-7" />
+		</a>
+		<a
+			href="/party/{code}/settings"
+			aria-label="Settings"
+			class="hover:text-foreground p-3 transition-colors"
+		>
+			<GearSix class="size-7" />
+		</a>
+	</nav>
 	{#if !party}
 		<p class="text-muted-foreground">Loading…</p>
 	{:else if playing}

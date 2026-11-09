@@ -5,7 +5,7 @@
 	import AutoPassSwitch from '#lib/components/auto-pass-switch.svelte';
 	import reckoningIcon from '#lib/assets/reckoning-icon.webp';
 	import { ACTIONS, ENCOUNTERS, MYTHOS_EFFECTS } from '#lib/actions.js';
-	import { CONDITIONS, getCondition } from '#lib/conditions.js';
+	import { TRAITS, getCondition } from '#lib/conditions.js';
 	import { INVESTIGATORS, getInvestigator } from '#lib/investigators.js';
 	import {
 		addCondition,
@@ -45,6 +45,8 @@
 			: { title: 'Action Phase', note: 'Perform 2 different actions on your turn.', items: ACTIONS }
 	);
 	let conditionPanel = $state<'gain' | 'remove' | null>(null);
+	/** Trait whose specific Conditions are expanded in the gain list */
+	let openTrait = $state<string | null>(null);
 	let busy = $state(false);
 	let error = $state<string | null>(null);
 
@@ -54,7 +56,7 @@
 	const myConditions = $derived(
 		(party.members?.[userId]?.conditions ?? []).flatMap((id) => getCondition(id) ?? [])
 	);
-	const isDetained = $derived(myConditions.some((c) => c.id === 'detained'));
+	const isRestricted = $derived(myConditions.some((c) => c.id === 'restriction'));
 	const isLead = $derived(party.game?.lead === userId);
 	/** Mythos effects followed by the card's event. */
 	const mythosItems = [
@@ -79,6 +81,14 @@
 		if (target < 0 || target >= next.length) return;
 		[next[index], next[target]] = [next[target], next[index]];
 		draftOrder = next;
+	}
+
+	function gain(id: string) {
+		return run(async () => {
+			await addCondition(code, userId, id);
+			conditionPanel = null;
+			openTrait = null;
+		});
 	}
 
 	async function run(action: () => Promise<void>) {
@@ -125,25 +135,66 @@
 				{/each}
 			</div>
 		{/if}
-		{#if conditionPanel === 'remove' || conditionPanel === 'gain'}
+		{#if conditionPanel === 'gain'}
 			<div class="bg-muted flex flex-col gap-1 p-2">
-				<p class="text-muted-foreground px-1 text-sm">
-					{conditionPanel === 'gain' ? 'Which Condition did you gain?' : 'Which Condition to remove?'}
-				</p>
-				{#each conditionPanel === 'gain' ? CONDITIONS : myConditions as condition (condition.id)}
+				<p class="text-muted-foreground px-1 text-sm">Which Condition did you gain?</p>
+				{#each TRAITS as trait (trait.name)}
+					{@const single = trait.conditions.length === 1}
+					{@const owned = trait.conditions.every((c) => myConditions.some((m) => m.id === c.id))}
+					<Button
+						variant="ghost"
+						class="justify-between"
+						disabled={busy || (single && owned)}
+						aria-expanded={single ? undefined : openTrait === trait.name}
+						onclick={() => {
+							if (single) gain(trait.conditions[0].id);
+							else openTrait = openTrait === trait.name ? null : trait.name;
+						}}
+					>
+						<span>
+							{trait.name}
+							{#if single && trait.conditions[0].name !== trait.name}
+								<span class="text-muted-foreground text-xs font-normal">{trait.conditions[0].name}</span>
+							{/if}
+						</span>
+						{#if !single}
+							<span class="text-muted-foreground">{openTrait === trait.name ? '−' : '+'}</span>
+						{/if}
+					</Button>
+					{#if !single && openTrait === trait.name}
+						<div class="flex flex-col gap-1 pl-4">
+							{#each trait.conditions as condition (condition.id)}
+								<Button
+									variant="ghost"
+									class="justify-start"
+									disabled={busy || myConditions.some((m) => m.id === condition.id)}
+									onclick={() => gain(condition.id)}
+								>
+									{condition.name}
+								</Button>
+							{/each}
+						</div>
+					{/if}
+				{/each}
+			</div>
+		{:else if conditionPanel === 'remove'}
+			<div class="bg-muted flex flex-col gap-1 p-2">
+				<p class="text-muted-foreground px-1 text-sm">Which Condition to remove?</p>
+				{#each myConditions as condition (condition.id)}
 					<Button
 						variant="ghost"
 						class="justify-start"
-						disabled={busy ||
-							(conditionPanel === 'gain' && myConditions.some((c) => c.id === condition.id))}
+						disabled={busy}
 						onclick={() =>
 							run(async () => {
-								if (conditionPanel === 'gain') await addCondition(code, userId, condition.id);
-								else await removeCondition(code, userId, condition.id);
+								await removeCondition(code, userId, condition.id);
 								conditionPanel = null;
 							})}
 					>
-						{condition.name}
+						{condition.trait}
+						{#if condition.name !== condition.trait}
+							<span class="text-muted-foreground text-xs font-normal">{condition.name}</span>
+						{/if}
 					</Button>
 				{/each}
 			</div>
@@ -420,7 +471,7 @@
 		{#if phase === 'encounter' || phase === 'action'}
 			{@render conditionControls()}
 		{/if}
-		<ul class="flex flex-col gap-1 {phase === 'action' && isActive && isDetained ? 'hidden' : ''}">
+		<ul class="flex flex-col gap-1 {phase === 'action' && isActive && isRestricted ? 'hidden' : ''}">
 			{#each phaseInfo.items as action (phase + action.id)}
 				{@const key = `${phase}:${action.id}`}
 				{@const open = openAction === key}
