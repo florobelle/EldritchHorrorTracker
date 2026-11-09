@@ -146,7 +146,7 @@
 						<span class="flex min-w-0 flex-col items-start text-left">
 							<span>{condition.name}</span>
 							{#if condition.subtitle}
-								<span class="text-muted-foreground max-w-full truncate text-xs font-normal">
+								<span class="text-muted-foreground text-xs font-normal whitespace-normal">
 									{condition.subtitle}
 								</span>
 							{/if}
