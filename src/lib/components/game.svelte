@@ -62,6 +62,7 @@
 		(party.members?.[userId]?.conditions ?? []).flatMap((id) => getCondition(id) ?? [])
 	);
 	const isRestricted = $derived(myConditions.some((c) => c.id === 'restriction'));
+	const soloGame = $derived(Object.keys(party.members ?? {}).length === 1);
 	const isLead = $derived(party.game?.lead === userId);
 	const MYTHOS_ICONS: Record<string, string> = {
 		'advance-omen': advanceOmenIcon,
@@ -375,11 +376,11 @@
 		{#if isLead || isHost}
 			<Button
 				size="lg"
-				variant={isHost ? 'outline' : 'default'}
+				variant={isHost && !soloGame ? 'outline' : 'default'}
 				disabled={busy}
 				onclick={() => run(() => finishMythos(code, userId))}
 			>
-				{isHost ? 'Skip Mythos Phase' : 'End Turn'}
+				{soloGame ? 'End Phase' : isHost ? 'Skip Mythos Phase' : 'End Turn'}
 			</Button>
 		{/if}
 		{@render replaceControls()}
