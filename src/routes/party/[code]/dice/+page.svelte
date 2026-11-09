@@ -25,7 +25,18 @@
 
 	const code = $derived(page.params.code ?? '');
 
-	let count = $state(1);
+	const COUNT_KEY = 'eh:diceCount';
+
+	function savedCount(): number {
+		try {
+			const n = Number(localStorage.getItem(COUNT_KEY));
+			return Number.isInteger(n) ? Math.min(MAX_DICE, Math.max(MIN_DICE, n)) : MIN_DICE;
+		} catch {
+			return MIN_DICE;
+		}
+	}
+
+	let count = $state(MIN_DICE);
 	const rollFace = () => Math.floor(Math.random() * 6) + 1;
 	/** Faces currently shown; new dice start on a random face */
 	let faces = $state<number[]>([rollFace()]);
@@ -47,6 +58,8 @@
 	const successes = $derived(faces.filter((f) => f >= successAt).length);
 
 	onMount(() => {
+		count = savedCount();
+		faces = Array.from({ length: count }, rollFace);
 		if (!getUsername()) {
 			goto('/username', { replaceState: true });
 			return;
@@ -65,6 +78,11 @@
 
 	function roll() {
 		if (rolling) return;
+		try {
+			localStorage.setItem(COUNT_KEY, String(count));
+		} catch {
+			// storage unavailable: the amount just won't be remembered
+		}
 		rolled = false;
 		const final = Array.from({ length: count }, rollFace);
 		rolling = true;

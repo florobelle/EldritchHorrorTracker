@@ -4,6 +4,13 @@
 	import leadToken from '#lib/assets/Lead_Investigator_token.webp';
 	import AutoPassSwitch from '#lib/components/auto-pass-switch.svelte';
 	import reckoningIcon from '#lib/assets/reckoning-icon.webp';
+	import advanceOmenIcon from '#lib/assets/Advance_Omen.webp';
+	import spawnGatesIcon from '#lib/assets/Spawn_Gates.webp';
+	import monsterSurgeIcon from '#lib/assets/Monster_Surge.webp';
+	import clueIcon from '#lib/assets/Clue.webp';
+	import rumorIcon from '#lib/assets/Spawn_Rumor.webp';
+	import eldritchIcon from '#lib/assets/Eldritch_Token.webp';
+	import mysteryIcon from '#lib/assets/Mystery_token.webp';
 	import { ACTIONS, ENCOUNTERS, MYTHOS_EFFECTS } from '#lib/actions.js';
 	import { CONDITIONS, getCondition } from '#lib/conditions.js';
 	import { INVESTIGATORS, getInvestigator } from '#lib/investigators.js';
@@ -56,6 +63,16 @@
 	);
 	const isRestricted = $derived(myConditions.some((c) => c.id === 'restriction'));
 	const isLead = $derived(party.game?.lead === userId);
+	const MYTHOS_ICONS: Record<string, string> = {
+		'advance-omen': advanceOmenIcon,
+		'resolve-reckoning': reckoningIcon,
+		'spawn-gates': spawnGatesIcon,
+		'monster-surge': monsterSurgeIcon,
+		'spawn-clues': clueIcon,
+		'place-rumor': rumorIcon,
+		'place-eldritch': eldritchIcon,
+		event: mysteryIcon
+	};
 	/** Mythos effects followed by the card's event. */
 	const mythosItems = [
 		...MYTHOS_EFFECTS,
@@ -376,7 +393,16 @@
 						aria-expanded={open}
 						onclick={() => (mythosOpen = open ? null : item.id)}
 					>
-						<span>{item.name}</span>
+						<span class="flex items-center gap-3">
+							<img
+								src={MYTHOS_ICONS[item.id]}
+								alt=""
+								class="size-6 shrink-0 object-contain {item.id === 'advance-omen'
+									? 'bg-[#f6efdc] p-0.5'
+									: ''}"
+							/>
+							{item.name}
+						</span>
 						<span class="flex items-center gap-2">
 							<span class="text-muted-foreground">{open ? '−' : '+'}</span>
 						</span>
