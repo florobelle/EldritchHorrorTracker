@@ -11,15 +11,13 @@
 		allSelected,
 		beginCampaign,
 		clearInvestigator,
-		endCampaign,
-		setAutoPass,
 		selectInvestigator,
 		subscribeParty,
 		type Party
 	} from '#lib/party.js';
-	import AutoPassSwitch from '#lib/components/auto-pass-switch.svelte';
 	import Game from '#lib/components/game.svelte';
 	import stamp from '#lib/assets/certified-stamp.png';
+	import GearSix from 'phosphor-svelte/lib/GearSix';
 	import { INVESTIGATORS, STAT_LABELS, getInvestigator } from '#lib/investigators.js';
 
 	const code = $derived(page.params.code ?? '');
@@ -29,7 +27,6 @@
 	let viewingId = $state<string | null>(null);
 	let error = $state<string | null>(null);
 	let beginning = $state(false);
-	let ending = $state(false);
 	let panel = $state<HTMLElement>();
 
 	const members = $derived(
@@ -66,18 +63,6 @@
 			unsubscribe();
 		};
 	});
-
-	async function end() {
-		if (!confirm('End this campaign for everyone? This cannot be undone.')) return;
-		ending = true;
-		error = null;
-		try {
-			await endCampaign(code);
-		} catch (e) {
-			error = e instanceof Error ? e.message : 'Could not end the campaign.';
-			ending = false;
-		}
-	}
 
 	async function begin() {
 		beginning = true;
@@ -119,6 +104,13 @@
 </script>
 
 <main class="flex min-h-svh items-center justify-center p-4">
+	<a
+		href="/party/{code}/settings"
+		aria-label="Settings"
+		class="text-muted-foreground hover:text-foreground fixed top-4 right-4 z-10 p-2 transition-colors"
+	>
+		<GearSix class="size-7" />
+	</a>
 	{#if !party}
 		<p class="text-muted-foreground">Loading…</p>
 	{:else if playing}
@@ -126,22 +118,6 @@
 			<Card.Content>
 				<Game {party} {code} {userId} />
 			</Card.Content>
-			{#if isHost}
-				<Card.Footer class="flex-col gap-2">
-					{#if party.game?.step === 'action'}
-						<AutoPassSwitch
-							checked={party.game.autoPass ?? false}
-							onchange={(value) => setAutoPass(code, value)}
-						/>
-					{/if}
-					<Button variant="destructive" onclick={end} disabled={ending}>
-						{ending ? 'Ending…' : 'End Campaign'}
-					</Button>
-					{#if error}
-						<p class="text-destructive text-sm">{error}</p>
-					{/if}
-				</Card.Footer>
-			{/if}
 		</Card.Root>
 	{:else}
 		<Card.Root class="w-full max-w-5xl py-8">
