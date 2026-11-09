@@ -33,7 +33,7 @@
 			if (!value) return;
 			if (!value.members?.[userId]) {
 				goto('/party/join', { replaceState: true });
-			} else if (value.status === 'started') {
+			} else if (value.status !== 'lobby') {
 				goto(`/party/${code}/campaign`, { replaceState: true });
 			}
 		});

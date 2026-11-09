@@ -4,7 +4,7 @@
 	import * as Card from '#lib/components/ui/card/index.js';
 	import * as InputOTP from '#lib/components/ui/input-otp/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
-	import { getUsername, getUserId } from '#lib/user.js';
+	import { getUsername, getUserId, setUserId, getLastParty, setLastParty } from '#lib/user.js';
 	import { joinParty } from '#lib/party.js';
 
 	let code = $state('');
@@ -15,6 +15,7 @@
 	onMount(() => {
 		username = getUsername();
 		if (!username) goto('/username', { replaceState: true });
+		code = getLastParty() ?? '';
 	});
 
 	async function join() {
@@ -22,7 +23,8 @@
 		joining = true;
 		error = null;
 		try {
-			await joinParty(code, getUserId(), username);
+			setUserId(await joinParty(code, getUserId(), username));
+			setLastParty(code);
 			await goto(`/party/${code}`);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Could not join the party.';

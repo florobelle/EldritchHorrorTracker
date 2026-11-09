@@ -85,18 +85,29 @@ export async function createParty(userId: string, name: string): Promise<string>
 	throw new Error('Could not find a free party code. Please try again.');
 }
 
-/** Adds the user to the party. Rejoining as an existing member is allowed at any time. */
-export async function joinParty(code: string, userId: string, name: string): Promise<void> {
+/**
+ * Adds the user to the party and returns their member id. Rejoining is allowed at any time:
+ * by id, or (when the id was lost, e.g. a new browser) by claiming the member with the same
+ * name, case-insensitively. Callers must adopt the returned id.
+ */
+export async function joinParty(code: string, userId: string, name: string): Promise<string> {
 	const snapshot = await get(partyRef(code));
 	if (!snapshot.exists()) throw new Error('Party not found.');
 
 	let failure = null as string | null;
+	let memberId = userId;
 	await runTransaction(partyRef(code), (party: Party | null) => {
 		// null means the local cache was empty; returning it makes the SDK retry with server data
 		if (party === null) return party;
 		failure = null;
 		const members = party.members ?? {};
-		const existing = members[userId];
+		memberId = userId;
+		if (!members[userId]) {
+			const wanted = name.trim().toLowerCase();
+			const match = Object.entries(members).find(([, m]) => m.name.trim().toLowerCase() === wanted);
+			if (match) memberId = match[0];
+		}
+		const existing = members[memberId];
 		if (!existing) {
 			if (party.status === 'started') {
 				failure = 'This campaign has already started.';
@@ -111,7 +122,7 @@ export async function joinParty(code: string, userId: string, name: string): Pro
 			...party,
 			members: {
 				...members,
-				[userId]: {
+				[memberId]: {
 					...existing,
 					name,
 					joinedAt: existing?.joinedAt ?? Date.now(),
@@ -121,6 +132,7 @@ export async function joinParty(code: string, userId: string, name: string): Pro
 		};
 	});
 	if (failure) throw new Error(failure);
+	return memberId;
 }
 
 /** Deletes the party from Firebase, ending the campaign for everyone. */

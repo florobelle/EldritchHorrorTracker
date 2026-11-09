@@ -5,7 +5,7 @@
 	import * as Card from '#lib/components/ui/card/index.js';
 	import { Badge } from '#lib/components/ui/badge/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
-	import { getUsername, getUserId } from '#lib/user.js';
+	import { getUsername, getUserId, clearLastParty } from '#lib/user.js';
 	import {
 		DEFAULT_COLOR,
 		allSelected,
@@ -56,7 +56,10 @@
 		userId = getUserId();
 		const unsubscribe = subscribeParty(code, (value) => {
 			// The campaign was ended (deleted) by the host
-			if (!value && party) goto('/', { replaceState: true });
+			if (!value && party) {
+				clearLastParty();
+				goto('/', { replaceState: true });
+			}
 			party = value;
 		});
 		return () => {

@@ -3,8 +3,8 @@
 	import { goto } from '$app/navigation';
 	import * as Card from '#lib/components/ui/card/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
-	import { getUsername, getUserId } from '#lib/user.js';
-	import { createParty } from '#lib/party.js';
+	import { getUsername, getUserId, getLastParty, setLastParty, setUserId, clearLastParty } from '#lib/user.js';
+	import { createParty, joinParty } from '#lib/party.js';
 
 	let username = $state<string | null>(null);
 	let creating = $state(false);
@@ -12,8 +12,24 @@
 
 	onMount(() => {
 		username = getUsername();
-		if (!username) goto('/username', { replaceState: true });
+		if (!username) {
+			goto('/username', { replaceState: true });
+			return;
+		}
+		rejoinLast(username);
 	});
+
+	/** Silently returns the player to the party they were last in, if it's still running. */
+	async function rejoinLast(name: string) {
+		const last = getLastParty();
+		if (!last) return;
+		try {
+			setUserId(await joinParty(last, getUserId(), name));
+			await goto(`/party/${last}`, { replaceState: true });
+		} catch {
+			clearLastParty();
+		}
+	}
 
 	async function create() {
 		if (!username) return;
@@ -21,6 +37,7 @@
 		error = null;
 		try {
 			const code = await createParty(getUserId(), username);
+			setLastParty(code);
 			await goto(`/party/${code}`);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Could not create the party.';
