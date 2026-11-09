@@ -6,7 +6,7 @@
 	import reckoningIcon from '#lib/assets/reckoning-icon.webp';
 	import { ACTIONS, ENCOUNTERS, MYTHOS_EFFECTS } from '#lib/actions.js';
 	import { CONDITIONS, getCondition } from '#lib/conditions.js';
-	import { getInvestigator } from '#lib/investigators.js';
+	import { INVESTIGATORS, getInvestigator } from '#lib/investigators.js';
 	import {
 		addCondition,
 		assignLead,
@@ -15,6 +15,8 @@
 		endTurn,
 		finishMythos,
 		removeCondition,
+		replaceInvestigator,
+		unavailableInvestigators,
 		DEFAULT_COLOR,
 		type Party
 	} from '#lib/party.js';
@@ -64,6 +66,12 @@
 		}
 	];
 	let mythosOpen = $state<string | null>(null);
+	let replacing = $state(false);
+	let replacement = $state<string | null>(null);
+	const availableInvestigators = $derived.by(() => {
+		const taken = unavailableInvestigators(party);
+		return INVESTIGATORS.filter((inv) => !taken.has(inv.id));
+	});
 
 	function move(index: number, delta: number) {
 		const next = [...order];
@@ -138,6 +146,57 @@
 						{condition.name}
 					</Button>
 				{/each}
+			</div>
+		{/if}
+	</div>
+{/snippet}
+
+{#snippet replaceControls()}
+	<div class="flex flex-col gap-2">
+		<Button
+			variant="outline"
+			onclick={() => {
+				replacing = !replacing;
+				replacement = null;
+			}}
+		>
+			My investigator died
+		</Button>
+		{#if replacing}
+			<div class="bg-muted flex flex-col gap-2 p-2">
+				<p class="text-muted-foreground px-1 text-sm">
+					Choose a new investigator. Fallen and chosen investigators are unavailable.
+				</p>
+				<div class="grid grid-cols-3 gap-2 sm:grid-cols-4">
+					{#each availableInvestigators as inv (inv.id)}
+						<button
+							type="button"
+							onclick={() => (replacement = inv.id)}
+							class="relative overflow-hidden border-4 text-left {replacement === inv.id
+								? 'border-foreground'
+								: 'border-transparent'}"
+						>
+							<img src={inv.image} alt={inv.name} class="aspect-square w-full object-cover object-top" />
+							<span class="bg-background/80 absolute inset-x-0 bottom-0 truncate px-1 py-0.5 text-xs">
+								{inv.name}
+							</span>
+						</button>
+					{:else}
+						<p class="text-muted-foreground col-span-full text-sm">No investigators left.</p>
+					{/each}
+				</div>
+				<Button
+					disabled={!replacement || busy}
+					onclick={() =>
+						replacement &&
+						run(async () => {
+							await replaceInvestigator(code, userId, replacement!);
+							replacing = false;
+							replacement = null;
+						})}
+				>
+					{replacement ? `Replace with ${getInvestigator(replacement)?.name}` : 'Select an investigator'}
+				</Button>
 			</div>
 		{/if}
 	</div>
@@ -289,11 +348,17 @@
 			<h2 class="text-xl font-bold">Mythos Phase</h2>
 			<p class="text-muted-foreground text-sm">Resolve each effect in order, then the event.</p>
 		</div>
-		{#if isLead}
-			<Button size="lg" disabled={busy} onclick={() => run(() => finishMythos(code, userId))}>
-				End Turn
+		{#if isLead || isHost}
+			<Button
+				size="lg"
+				variant={isHost ? 'outline' : 'default'}
+				disabled={busy}
+				onclick={() => run(() => finishMythos(code, userId))}
+			>
+				{isHost ? 'Skip Mythos Phase' : 'End Turn'}
 			</Button>
 		{/if}
+		{@render replaceControls()}
 		<ul class="flex flex-col gap-1">
 			{#each mythosItems as item (item.id)}
 				{@const open = mythosOpen === item.id}

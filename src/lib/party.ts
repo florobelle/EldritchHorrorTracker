@@ -8,6 +8,8 @@ export type Member = {
 	joinedAt: number;
 	color?: string;
 	investigator?: string;
+	/** Investigators this player lost earlier in the campaign; nobody can pick them again */
+	retired?: string[];
 	/** Ids from conditions.ts */
 	conditions?: string[];
 };
@@ -235,15 +237,15 @@ export async function previousMythosStep(code: string, userId: string): Promise<
 	if (failure) throw new Error(failure);
 }
 
-/** Lead Investigator ends the Mythos Phase; the lead then chooses who holds the token next ('handoff'), unless auto pass hands it to the next player (or the only player keeps it). */
+/** Lead Investigator (or the host) ends the Mythos Phase; the lead then chooses who holds the token next ('handoff'), unless auto pass hands it to the next player (or the only player keeps it). */
 export async function finishMythos(code: string, userId: string): Promise<void> {
 	let failure = null as string | null;
 	await runTransaction(partyRef(code), (party: Party | null) => {
 		if (party === null) return party;
 		failure = null;
 		const game = party.game;
-		if (game?.phase !== 'mythos' || userId !== game.lead) {
-			failure = 'Only the Lead Investigator can end the Mythos Phase.';
+		if (game?.phase !== 'mythos' || (userId !== game.lead && userId !== party.host)) {
+			failure = 'Only the Lead Investigator or host can end the Mythos Phase.';
 			return;
 		}
 		const { mythosStep: _, ...rest } = game;
@@ -302,6 +304,59 @@ export async function removeCondition(code: string, userId: string, id: string):
 		const list: string[] = current ?? [];
 		return list.includes(id) ? list.filter((c) => c !== id) : list;
 	});
+}
+
+/** Ids of investigators nobody can pick: currently played, or lost earlier in the campaign. */
+export function unavailableInvestigators(party: Party): Set<string> {
+	const taken = new Set<string>();
+	for (const m of Object.values(party.members ?? {})) {
+		if (m.investigator) taken.add(m.investigator);
+		for (const id of m.retired ?? []) taken.add(id);
+	}
+	return taken;
+}
+
+/**
+ * Replaces the user's fallen investigator during the Mythos Phase. The old one is retired for
+ * good, and the new investigator starts without Conditions.
+ */
+export async function replaceInvestigator(
+	code: string,
+	userId: string,
+	investigatorId: string
+): Promise<void> {
+	let failure = null as string | null;
+	await runTransaction(partyRef(code), (party: Party | null) => {
+		if (party === null) return party;
+		failure = null;
+		const me = party.members?.[userId];
+		if (!me) {
+			failure = 'You are not in this party.';
+			return;
+		}
+		if (party.game?.phase !== 'mythos') {
+			failure = 'Investigators can only be replaced during the Mythos Phase.';
+			return;
+		}
+		if (unavailableInvestigators(party).has(investigatorId)) {
+			failure = 'That investigator is not available.';
+			return;
+		}
+		// Firebase rejects undefined values, so drop the conditions field instead of setting it.
+		const { conditions: _, ...rest } = me;
+		return {
+			...party,
+			members: {
+				...party.members,
+				[userId]: {
+					...rest,
+					investigator: investigatorId,
+					retired: [...(me.retired ?? []), ...(me.investigator ? [me.investigator] : [])]
+				}
+			}
+		};
+	});
+	if (failure) throw new Error(failure);
 }
 
 /** True once every member has picked an investigator. */
