@@ -177,7 +177,7 @@ export async function assignLead(code: string, leadId: string, autoPass: boolean
 	if (failure) throw new Error(failure);
 }
 
-/** Passes the turn to the next player. Only the active player may do this. */
+/** Passes the turn to the next player. The active player, the host or the Lead Investigator may do this. */
 export async function endTurn(code: string, userId: string): Promise<void> {
 	let failure = null as string | null;
 	await runTransaction(partyRef(code), (party: Party | null) => {
@@ -188,7 +188,7 @@ export async function endTurn(code: string, userId: string): Promise<void> {
 			failure = 'The Action Phase has not started.';
 			return;
 		}
-		if (userId !== game.order[game.turn]) {
+		if (userId !== game.order[game.turn] && userId !== party.host && userId !== game.lead) {
 			failure = "It isn't your turn.";
 			return;
 		}

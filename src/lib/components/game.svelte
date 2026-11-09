@@ -336,9 +336,22 @@
 				{@render reminder(condition.name, condition.action!)}
 			{/each}
 		{/if}
-		<Button size="lg" disabled={!isActive || busy} onclick={() => run(() => endTurn(code, userId))}>
-			End turn
-		</Button>
+		{#if isActive}
+			<Button size="lg" disabled={busy} onclick={() => run(() => endTurn(code, userId))}>
+				End turn
+			</Button>
+		{:else if isHost || isLead}
+			<Button
+				size="lg"
+				variant="outline"
+				disabled={busy}
+				onclick={() => run(() => endTurn(code, userId))}
+			>
+				Skip {party.members[activeId ?? '']?.name ?? 'player'}'s turn
+			</Button>
+		{:else}
+			<Button size="lg" disabled>End turn</Button>
+		{/if}
 		{#if phase === 'encounter' || phase === 'action'}
 			{@render conditionControls()}
 		{/if}
