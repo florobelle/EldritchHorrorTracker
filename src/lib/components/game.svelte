@@ -14,8 +14,6 @@
 		confirmTurnOrder,
 		endTurn,
 		finishMythos,
-		nextMythosStep,
-		previousMythosStep,
 		removeCondition,
 		DEFAULT_COLOR,
 		type Party
@@ -56,8 +54,16 @@
 	);
 	const isDetained = $derived(myConditions.some((c) => c.id === 'detained'));
 	const isLead = $derived(party.game?.lead === userId);
-	const mythosStep = $derived(party.game?.mythosStep ?? 0);
-	const mythosEffect = $derived(MYTHOS_EFFECTS[mythosStep]);
+	/** Mythos effects followed by the card's event. */
+	const mythosItems = [
+		...MYTHOS_EFFECTS,
+		{
+			id: 'event',
+			name: 'Mythos Event',
+			description: 'Please resolve the event on the Mythos card if any.'
+		}
+	];
+	let mythosOpen = $state<string | null>(null);
 
 	function move(index: number, delta: number) {
 		const next = [...order];
@@ -279,68 +285,44 @@
 				? 'Please draw a Mythos card and resolve each effect and event.'
 				: 'Please wait for the Lead Investigator to resolve the Mythos Phase.'}
 		</p>
-		<h2 class="text-xl font-bold">Mythos Phase</h2>
-		{#if mythosEffect}
-			<div class="flex flex-col gap-2 border border-[#d8cba8] bg-[#f6efdc] p-4 text-[#3a3022]">
-				<p class="text-sm text-[#7a6a4f]">Effect {mythosStep + 1} of {MYTHOS_EFFECTS.length}</p>
-				<h3 class="text-lg font-bold">{mythosEffect.name}</h3>
-				<p class="whitespace-pre-line">{#each mythosEffect.description.split('{reckoning}') as part, i (i)}{#if i > 0}<img src={reckoningIcon} alt="Reckoning" class="inline-block h-5 align-text-bottom" />{/if}{part}{/each}</p>
-			</div>
-			{#if mythosEffect.id === 'resolve-reckoning'}
-				{#each myConditions.filter((c) => c.reckoning) as condition (condition.id)}
-					{@render reminder(`Reckoning: ${condition.name}`, condition.reckoning!)}
-				{/each}
-				{@render conditionControls()}
-			{/if}
-			{#if isLead}
-				<div class="flex gap-2">
-					{#if mythosStep > 0}
-						<Button
-							size="lg"
-							variant="outline"
-							class="flex-1"
-							disabled={busy}
-							onclick={() => run(() => previousMythosStep(code, userId))}
-						>
-							Back
-						</Button>
-					{/if}
-					<Button
-						size="lg"
-						class="flex-1"
-						disabled={busy}
-						onclick={() => run(() => nextMythosStep(code, userId))}
-					>
-						Next
-					</Button>
-				</div>
-			{/if}
-		{:else}
-			<div class="border border-[#d8cba8] bg-[#f6efdc] p-4 text-[#3a3022]">
-				<p class="text-lg font-semibold">Please resolve the event on the Mythos card if any.</p>
-			</div>
-			{#if isLead}
-				<div class="flex gap-2">
-					<Button
-						size="lg"
-						variant="outline"
-						class="flex-1"
-						disabled={busy}
-						onclick={() => run(() => previousMythosStep(code, userId))}
-					>
-						Back
-					</Button>
-					<Button
-						size="lg"
-						class="flex-1"
-						disabled={busy}
-						onclick={() => run(() => finishMythos(code, userId))}
-					>
-						Done
-					</Button>
-				</div>
-			{/if}
+		<div>
+			<h2 class="text-xl font-bold">Mythos Phase</h2>
+			<p class="text-muted-foreground text-sm">Resolve each effect in order, then the event.</p>
+		</div>
+		{#if isLead}
+			<Button size="lg" disabled={busy} onclick={() => run(() => finishMythos(code, userId))}>
+				End Turn
+			</Button>
 		{/if}
+		<ul class="flex flex-col gap-1">
+			{#each mythosItems as item (item.id)}
+				{@const open = mythosOpen === item.id}
+				<li class="bg-muted">
+					<button
+						type="button"
+						class="flex w-full items-center justify-between gap-2 px-3 py-3 text-left font-semibold"
+						aria-expanded={open}
+						onclick={() => (mythosOpen = open ? null : item.id)}
+					>
+						<span>{item.name}</span>
+						<span class="flex items-center gap-2">
+							<span class="text-muted-foreground">{open ? '−' : '+'}</span>
+						</span>
+					</button>
+					{#if open}
+						<div class="flex flex-col gap-2 px-3 pb-3">
+							<p class="text-muted-foreground min-h-12 text-sm whitespace-pre-line">{#each item.description.split('{reckoning}') as part, j (j)}{#if j > 0}<img src={reckoningIcon} alt="Reckoning" class="inline-block h-5 align-text-bottom" />{/if}{part}{/each}</p>
+							{#if item.id === 'resolve-reckoning'}
+								{#each myConditions.filter((c) => c.reckoning) as condition (condition.id)}
+									{@render reminder(`Reckoning: ${condition.name}`, condition.reckoning!)}
+								{/each}
+								{@render conditionControls()}
+							{/if}
+						</div>
+					{/if}
+				</li>
+			{/each}
+		</ul>
 	{:else}
 		<p class="text-lg font-semibold">
 			{isActive ? 'It is your turn.' : 'Please wait for your turn.'}
@@ -353,6 +335,12 @@
 			{#each myConditions.filter((c) => c.action) as condition (condition.id)}
 				{@render reminder(condition.name, condition.action!)}
 			{/each}
+		{/if}
+		<Button size="lg" disabled={!isActive || busy} onclick={() => run(() => endTurn(code, userId))}>
+			End turn
+		</Button>
+		{#if phase === 'encounter' || phase === 'action'}
+			{@render conditionControls()}
 		{/if}
 		<ul class="flex flex-col gap-1 {phase === 'action' && isActive && isDetained ? 'hidden' : ''}">
 			{#each phaseInfo.items as action (phase + action.id)}
@@ -374,9 +362,6 @@
 				</li>
 			{/each}
 		</ul>
-		{#if phase === 'encounter' || phase === 'action'}
-			{@render conditionControls()}
-		{/if}
 		<div>
 			<p class="text-muted-foreground mb-2 text-sm">Turn order</p>
 			<ol class="flex flex-col gap-2">
@@ -390,9 +375,6 @@
 				{/each}
 			</ol>
 		</div>
-		<Button size="lg" disabled={!isActive || busy} onclick={() => run(() => endTurn(code, userId))}>
-			End turn
-		</Button>
 	{/if}
 	{#if error}
 		<p class="text-destructive text-sm">{error}</p>
