@@ -13,6 +13,7 @@
 		clearInvestigator,
 		selectInvestigator,
 		subscribeParty,
+		wasKicked,
 		type Party
 	} from '#lib/party.js';
 	import Game from '#lib/components/game.svelte';
@@ -57,6 +58,12 @@
 			if (!value && party) {
 				clearLastParty();
 				goto('/', { replaceState: true });
+			}
+			if (value && !value.members?.[userId]) {
+				goto(wasKicked(value, userId) ? `/party/${code}/kicked` : '/party/join', {
+					replaceState: true
+				});
+				return;
 			}
 			party = value;
 		});

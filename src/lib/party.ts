@@ -57,6 +57,10 @@ export type Party = {
 	status: 'lobby' | 'started' | 'playing';
 	createdAt: number;
 	members: Record<string, Member>;
+	/** Members removed by a vote; kept so they can rejoin with their investigator and Conditions */
+	kicked?: Record<string, Member>;
+	/** target member id -> ids of members voting to kick them */
+	kickVotes?: Record<string, Record<string, boolean>>;
 	game?: Game;
 };
 
@@ -104,6 +108,25 @@ export async function joinParty(code: string, userId: string, name: string): Pro
 		failure = null;
 		const members = party.members ?? {};
 		memberId = userId;
+		const kicked = party.kicked ?? {};
+		const wantedName = name.trim().toLowerCase();
+		if (!members[userId] && !Object.values(members).some((m) => m.name.trim().toLowerCase() === wantedName)) {
+			// Someone removed by a vote comes back with their investigator and Conditions
+			const kickedId = kicked[userId]
+				? userId
+				: Object.keys(kicked).find((id) => kicked[id].name.trim().toLowerCase() === wantedName);
+			if (kickedId) {
+				memberId = kickedId;
+				const { [kickedId]: restored, ...stillKicked } = kicked;
+				const next: Party = { ...party, members: { ...members, [kickedId]: { ...restored, name } } };
+				if (Object.keys(stillKicked).length) next.kicked = stillKicked;
+				else delete next.kicked;
+				if (party.game && !party.game.order.includes(kickedId) && party.game.step !== 'order') {
+					next.game = { ...party.game, order: [...party.game.order, kickedId] };
+				}
+				return next;
+			}
+		}
 		if (!members[userId]) {
 			const wanted = name.trim().toLowerCase();
 			const match = Object.entries(members).find(([, m]) => m.name.trim().toLowerCase() === wanted);
@@ -179,6 +202,15 @@ export async function assignLead(code: string, leadId: string, autoPass: boolean
 	if (failure) throw new Error(failure);
 }
 
+/** Moves on from the player at `game.turn`: the next player, or the next phase once everyone has played. */
+function advanceTurn(game: Game): Game {
+	const next = game.turn + 1;
+	if (next < game.order.length) return { ...game, turn: next };
+	// Everyone has played this phase: Action -> Encounter -> Mythos
+	if (game.phase === 'encounter') return { ...game, phase: 'mythos', mythosStep: 0, turn: 0 };
+	return { ...game, phase: 'encounter', turn: 0 };
+}
+
 /** Passes the turn to the next player. The active player, the host or the Lead Investigator may do this. */
 export async function endTurn(code: string, userId: string): Promise<void> {
 	let failure = null as string | null;
@@ -194,13 +226,7 @@ export async function endTurn(code: string, userId: string): Promise<void> {
 			failure = "It isn't your turn.";
 			return;
 		}
-		const next = game.turn + 1;
-		if (next < game.order.length) return { ...party, game: { ...game, turn: next } };
-		// Everyone has played this phase: Action -> Encounter -> Mythos
-		if (game.phase === 'encounter') {
-			return { ...party, game: { ...game, phase: 'mythos', mythosStep: 0, turn: 0 } };
-		}
-		return { ...party, game: { ...game, phase: 'encounter', turn: 0 } };
+		return { ...party, game: advanceTurn(game) };
 	});
 	if (failure) throw new Error(failure);
 }
@@ -306,10 +332,94 @@ export async function removeCondition(code: string, userId: string, id: string):
 	});
 }
 
+/** Votes needed to kick a member: half of the other players, rounded down (at least 1). */
+export const kickThreshold = (party: Party) =>
+	Math.max(1, Math.floor((Object.keys(party.members ?? {}).length - 1) / 2));
+
+/** Current votes against a member, counting only voters still in the party. */
+export const kickVoteCount = (party: Party, targetId: string) =>
+	Object.keys(party.kickVotes?.[targetId] ?? {}).filter(
+		(id) => id !== targetId && party.members?.[id]
+	).length;
+
+/** Moves a member to `kicked` and repairs the host, turn order, lead and current turn. */
+function removeMember(party: Party, target: string): Party {
+	const { [target]: gone, ...members } = party.members;
+	const next: Party = { ...party, members, kicked: { ...(party.kicked ?? {}), [target]: gone } };
+
+	// Drop votes against the target and votes the target cast
+	const votes: Record<string, Record<string, boolean>> = {};
+	for (const [t, voters] of Object.entries(party.kickVotes ?? {})) {
+		if (t === target) continue;
+		const kept = Object.keys(voters).filter((v) => v !== target);
+		if (kept.length) votes[t] = Object.fromEntries(kept.map((v) => [v, true]));
+	}
+	if (Object.keys(votes).length) next.kickVotes = votes;
+	else delete next.kickVotes;
+
+	if (party.host === target) {
+		next.host = Object.entries(members).sort(([, a], [, b]) => a.joinedAt - b.joinedAt)[0][0];
+	}
+
+	const game = party.game;
+	const index = game ? game.order.indexOf(target) : -1;
+	if (game && index >= 0) {
+		const order = game.order.filter((id) => id !== target);
+		let updated: Game = { ...game, order };
+		// The lead always heads the order, so the next player in line inherits the token
+		if (game.lead === target) updated.lead = order[0];
+		if (game.step === 'action' && (game.phase === 'action' || game.phase === 'encounter' || !game.phase)) {
+			if (index < game.turn) updated.turn = game.turn - 1;
+			// Kicked on their own turn: the following player is up (or the phase ends)
+			else if (index === game.turn) updated = advanceTurn({ ...updated, turn: game.turn - 1 });
+		}
+		next.game = updated;
+	}
+	return next;
+}
+
+/** Kicks every member whose votes reach the threshold (a kick can lower it for the rest). */
+function applyKicks(party: Party): Party {
+	for (;;) {
+		if (Object.keys(party.members).length < 2) return party;
+		const target = Object.keys(party.kickVotes ?? {}).find(
+			(id) => party.members[id] && kickVoteCount(party, id) >= kickThreshold(party)
+		);
+		if (!target) return party;
+		party = removeMember(party, target);
+	}
+}
+
+/** Adds or withdraws the voter's vote to kick a member; kicks them once enough others agree. */
+export async function toggleKickVote(code: string, voterId: string, targetId: string): Promise<void> {
+	let failure = null as string | null;
+	await runTransaction(partyRef(code), (party: Party | null) => {
+		if (party === null) return party;
+		failure = null;
+		if (!party.members?.[voterId] || !party.members?.[targetId] || voterId === targetId) {
+			failure = 'That player is not in this party.';
+			return;
+		}
+		const votes = { ...(party.kickVotes ?? {}) };
+		const voters = { ...(votes[targetId] ?? {}) };
+		if (voters[voterId]) delete voters[voterId];
+		else voters[voterId] = true;
+		if (Object.keys(voters).length) votes[targetId] = voters;
+		else delete votes[targetId];
+		const next: Party = { ...party, kickVotes: votes };
+		if (!Object.keys(votes).length) delete next.kickVotes;
+		return applyKicks(next);
+	});
+	if (failure) throw new Error(failure);
+}
+
+/** True when the user was removed by a vote and may rejoin. */
+export const wasKicked = (party: Party, userId: string) => !!party.kicked?.[userId];
+
 /** Ids of investigators nobody can pick: currently played, or lost earlier in the campaign. */
 export function unavailableInvestigators(party: Party): Set<string> {
 	const taken = new Set<string>();
-	for (const m of Object.values(party.members ?? {})) {
+	for (const m of [...Object.values(party.members ?? {}), ...Object.values(party.kicked ?? {})]) {
 		if (m.investigator) taken.add(m.investigator);
 		for (const id of m.retired ?? []) taken.add(id);
 	}

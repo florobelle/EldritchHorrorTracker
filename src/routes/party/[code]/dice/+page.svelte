@@ -5,7 +5,7 @@
 	import * as Card from '#lib/components/ui/card/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { getUsername, getUserId } from '#lib/user.js';
-	import { subscribeParty, type Party } from '#lib/party.js';
+	import { subscribeParty, wasKicked, type Party } from '#lib/party.js';
 	import Minus from 'phosphor-svelte/lib/Minus';
 	import Plus from 'phosphor-svelte/lib/Plus';
 
@@ -65,7 +65,15 @@
 			return;
 		}
 		userId = getUserId();
-		return subscribeParty(code, (value) => (party = value));
+		return subscribeParty(code, (value) => {
+			if (value && !value.members?.[userId]) {
+				goto(wasKicked(value, userId) ? `/party/${code}/kicked` : '/party/join', {
+					replaceState: true
+				});
+				return;
+			}
+			party = value;
+		});
 	});
 
 	function step(delta: number) {
