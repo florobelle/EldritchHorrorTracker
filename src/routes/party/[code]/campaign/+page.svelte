@@ -95,6 +95,23 @@
 		}
 	}
 
+	/** Locks in a random investigator that nobody has taken. */
+	async function randomize() {
+		error = null;
+		const free = INVESTIGATORS.filter((inv) => !takenBy[inv.id]);
+		if (!free.length) {
+			error = 'No investigators are available.';
+			return;
+		}
+		const pick = free[Math.floor(Math.random() * free.length)];
+		viewingId = pick.id;
+		try {
+			await selectInvestigator(code, userId, pick.id);
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Could not select investigator.';
+		}
+	}
+
 	/** Previews the investigator's stats; the Select button locks the choice in. */
 	function tap(id: string) {
 		viewingId = id;
@@ -107,7 +124,7 @@
 	<a
 		href="/party/{code}/settings"
 		aria-label="Settings"
-		class="text-muted-foreground hover:text-foreground fixed top-4 right-4 z-10 p-2 transition-colors"
+		class="bg-card text-muted-foreground hover:text-foreground fixed top-0 right-0 z-10 rounded-bl-xl border-b border-l p-3 transition-colors"
 	>
 		<GearSix class="size-7" />
 	</a>
@@ -220,6 +237,19 @@
 						{/if}
 					{:else}
 						<p class="text-[#7a6a4f]">Tap an investigator to see their details.</p>
+					{/if}
+					{#if !myPick}
+						<Button
+							size="lg"
+							variant="outline"
+							onclick={randomize}
+							class="border-[#3a3022] bg-transparent text-[#3a3022] hover:bg-[#3a3022]/10 hover:text-[#3a3022] dark:border-[#3a3022] dark:bg-transparent dark:hover:bg-[#3a3022]/10"
+						>
+							Random investigator
+						</Button>
+						{#if !viewing && error}
+							<p class="text-destructive text-sm">{error}</p>
+						{/if}
 					{/if}
 				</div>
 			</Card.Content>
